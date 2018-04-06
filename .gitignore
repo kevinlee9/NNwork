@@ -1,1 +1,3 @@
-*.ipynb
+plot_pca_vs_lda.ipynb
+.ipynb*
+*.zip
