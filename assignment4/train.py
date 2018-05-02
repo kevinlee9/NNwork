@@ -3,8 +3,7 @@ from __future__ import print_function
 
 import os
 import pickle
-import numpy as np
-import tensorflow as tf
+import argparse
 
 from rnn import *
 import time
@@ -96,11 +95,14 @@ def load_npz_all():
         out["y_test"] = np.vstack((data1["y_test"], data2["y_test"], data3["y_test"]))
         out["lengths_train"] = np.vstack((data1["lengths_train"], data2["lengths_train"], data3["lengths_train"]))
         out["lengths_test"] = np.vstack((data1["lengths_test"], data2["lengths_test"], data3["lengths_test"]))
+
+        with open(path + "/data/all.pkl", "wb") as f:
+            pickle.dump(out, f)
     return out
 
 
 def load_bypkl(file_name):
-    return pickle.load(file_name)
+    return pickle.load(open(file_name, "rb"))
 
 
 def load_lbs(file_name):
@@ -116,14 +118,25 @@ def sample_batch(X_train, lengths, y_train, batch_size):
     return X_batch, lengths_batch, y_batch
 
 
-def training():
+def training(args):
     mode = "fine"
-    person_number = "2"
+    load_bycached = True
+    person_number = args.person_number
+    params.batch_size = args.batch_size
+    params.num_layers = args.layer_number
+    params.time_step = args.time_step
+    # person_number = "2"  # option: 0, 1, 2, 3. 0 is all
+    export_name = "{}_{}_{}_{}_{}".format(args.person_number, args.batch_size, args.epoch_number, args.layer_size, args.time_step)
+    print("export name {}".format(export_name))
     if mode == "raw":
         data1 = load_npz(path + "/data/0{}.npz".format(person_number))
         params.batch_size = 9
     else:
-        data1 = load_npz_pcs(path + "/data/0{}.npz".format(person_number))
+        if not load_bycached:
+            data1 = load_npz_pcs(path + "/data/0{}.npz".format(person_number))
+        else:
+            # data1 = load_bypkl(path + "/data/data{}.pkl".format(person_number))
+            data1 = load_bypkl(path + "/data/data{}_{}.pkl".format(person_number, args.time_step))
 
     model = RNN(10)
     op = tf.train.AdamOptimizer(learning_rate=params.learning_rate, beta1=params.beta1)
@@ -145,13 +158,13 @@ def training():
                                       model.y: y_batch,
                                       model.lengths: lengths_batch})
 
-        print("Step #" + str(i))
-        print("Train loss = {}, Accuracy = {}".format(train_loss, train_acc))
         if i%10 == 0:
             test_loss, test_acc = sess.run([model.loss, model.accuracy],
                                            feed_dict={model.X: data1["X_test"],
                                                       model.y: data1["y_test"],
                                                       model.lengths: data1["lengths_test"]})
+            print("Step #" + str(i))
+            print("Train loss = {}, Accuracy = {}".format(train_loss, train_acc))
             print("Test loss = {}, Accuracy = {}".format(test_loss, test_acc))
             train_loss_list.append(train_loss)
             train_acc_list.append(train_acc)
@@ -166,11 +179,16 @@ def training():
     end_time = time.time()
     print("training time: {}".format(end_time - start_time))
     print("max accuracy: {}".format(max_acc))
+
+
+    with open("summary.txt", "wa") as f:
+        f.write(export_name + "," + str(max_acc) + "\n")
+
     #### plot
-    np.asarray(train_loss_list).dump("train_loss_list{}.np".format(person_number))
-    np.asarray(train_acc_list).dump("train_acc_list{}.np".format(person_number))
-    np.asarray(test_acc_list).dump("test_acc_list{}.np".format(person_number))
-    np.asarray(test_loss_list).dump("test_loss_list{}.np".format(person_number))
+    np.asarray(train_loss_list).dump("results/train_loss_list{}.np".format(export_name))
+    np.asarray(train_acc_list).dump("results/train_acc_list{}.np".format(export_name))
+    np.asarray(test_acc_list).dump("results/test_acc_list{}.np".format(export_name))
+    np.asarray(test_loss_list).dump("results/test_loss_list{}.np".format(export_name))
 
     # Matlotlib code to plot the loss and accuracies
     eval_indices = range(0, params.max_steps, 10)
@@ -181,7 +199,7 @@ def training():
     plt.xlabel('Generation')
     plt.ylabel('Softmax Loss')
     plt.legend(loc='lower right')
-    plt.savefig("loss{}.pdf".format(person_number))
+    plt.savefig("results/loss{}.pdf".format(export_name))
 
     # Plot train and test accuracy
     plt.plot(eval_indices, train_acc_list, 'k-', label='Train Set Accuracy')
@@ -190,12 +208,12 @@ def training():
     plt.xlabel('Generation')
     plt.ylabel('Accuracy')
     plt.legend(loc='lower right')
-    plt.savefig("accuracy{}.pdf".format(person_number))
+    plt.savefig("results/accuracy{}.pdf".format(export_name))
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
 
-    training()
-
+    parser.add_argument("--person_number", type=str, default="1")
 
 
